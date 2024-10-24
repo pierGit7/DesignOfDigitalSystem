@@ -14,7 +14,7 @@ entity debounce is
 end debounce;
 
 architecture rtl of debounce is
-    constant N : integer := 20;         -- filter of 2^N * 10ns = 10ms
+    constant N : integer := 2;         -- filter of 2^N * 10ns = 10ms
     -- N should be set to 20 when synthesizing and 2 when simulating.
     type state_type is (zero, wait0, one, wait1);
     signal state_reg, state_next           : state_type;

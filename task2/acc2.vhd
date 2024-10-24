@@ -49,20 +49,18 @@ architecture rtl of acc is
 type state_type is ( S0, S1, S2, S3);
 
 signal state, next_state : state_type;
-signal i : integer;
+signal i, next_i : unsigned(15 downto 0) := (others => '0');
 
 begin
-
-    next_state <= state;
-    
-
     cl : process(start)
     begin
+        next_state <= state;
+        next_i <= i;
     
         case (state) is
             when S0 =>
                 if start='1' then
-                    addr <= std_logic_vector(to_unsigned(i, addr'length));
+                    addr <= std_logic_vector(i);
                     next_state <= S1;
                 end if;
             when S1 =>
@@ -71,12 +69,12 @@ begin
             when S2 =>
                 we <= '1';
                 dataW <= not(dataR);
-                addr <= std_logic_vector(to_unsigned(i + 25344, addr'length)) ;
+                addr <= std_logic_vector(i + 25344) ;
                 next_state<= S3;
             when S3 =>
                 if i /= 25344 then
                     we <= '0';
-                    i <= i  +1;
+                    next_i <= i+1;
                 else
                     we <= '0';
                     en <= '0';
@@ -94,10 +92,12 @@ begin
         if rising_edge(clk) then
             if reset = '1' then
                 addr <= (others => '0');
-                i <= 0;
+                state <= S0;
+                i <= (others => '0');
             else
                 -- Registers update
                 state <= next_state;
+                i <= next_i;
             end if;
         end if;
     end process register_process;
