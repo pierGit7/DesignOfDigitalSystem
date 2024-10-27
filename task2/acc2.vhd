@@ -46,41 +46,46 @@ architecture rtl of acc is
 
 -- All internal signals are defined here
 
-type state_type is ( S0, S1, S2, S3);
+type state_type is ( idle, invert, write, check_end);
 
-signal state, next_state : state_type;
-signal i, next_i : unsigned(15 downto 0) := (others => '0');
+signal state, next_state : state_type := idle;
+signal reg, next_reg : halfword_t := halfword_zero;
 
 begin
-    cl : process(start)
+    cl : process(start,state)
     begin
         next_state <= state;
-        next_i <= i;
+        next_reg <= reg;
+        finish <= '0';
+        addr <= reg;
+        
+        --addr <= halfword_zero;
     
         case (state) is
-            when S0 =>
-                if start='1' then
-                    addr <= std_logic_vector(i);
-                    next_state <= S1;
+            when idle =>
+                if start = '1' then
+                    en <= '1';
+                    next_state <= invert;
+                    --addr <= reg;
                 end if;
-            when S1 =>
-                en <= '1';
-                next_state<= S2;
-            when S2 =>
-                we <= '1';
+            when invert =>
                 dataW <= not(dataR);
-                addr <= std_logic_vector(i + 25344) ;
-                next_state<= S3;
-            when S3 =>
-                if i /= 25344 then
-                    we <= '0';
-                    next_i <= i+1;
+                next_reg <= std_logic_vector(unsigned(reg) + 25344);
+                next_state <= write;
+            when write =>
+                we <= '1';
+                next_state <= check_end;
+            when check_end =>
+            -- 25343 means this was the last word to read
+                if (to_integer(unsigned(reg)) - 25344) /= 25343 then
+                    we <= '0';  
+                    next_reg <= std_logic_vector(unsigned(reg) - 25343);
                 else
                     we <= '0';
                     en <= '0';
                     finish <= '1';
                 end if;
-                next_state<= S0;
+                next_state<= idle;
         end case;    
         
         
@@ -92,12 +97,15 @@ begin
         if rising_edge(clk) then
             if reset = '1' then
                 addr <= (others => '0');
-                state <= S0;
-                i <= (others => '0');
+                state <= idle;
+                reg <= (others => '0');
+                --en <= '0';
+                --we <= '0';
             else
                 -- Registers update
                 state <= next_state;
-                i <= next_i;
+                reg <= next_reg;
+                addr <= next_reg;
             end if;
         end if;
     end process register_process;
