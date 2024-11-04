@@ -77,7 +77,7 @@ begin
                 end if;
             when read =>
                 -- check if you read three rows
-                if y_position mod 3 = 0 then
+                if y_position mod 3 = 2 then
                     state_t2 <= computation;
                 else
                     y_position = y_position + 1;
