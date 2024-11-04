@@ -61,6 +61,7 @@ signal reg, next_reg : halfword_t := halfword_zero;
 signal state_t2, next_state_t2 : state_type_t2 := idle;
 signal x_position, y_position : integer := 0;
 signal top_line_left, top_line_right : word_t := word_zero;
+signal Dy, Dx : std_logic_vector;
 
 begin
     task2 : process(start, state_t2)
@@ -80,10 +81,12 @@ begin
                 if y_position mod 3 = 0 then
                     state_t2 <= computation;
                 else
-                    y_position = y_position + 1;
-                    reg <= reg + (y_position * 352);
+                    y_position <= y_position + 1;
+                    reg <= std_logic_vector(unsigned(reg) + (y_position * 352));
                 end if;
-            when computation => 
+            when computation =>
+                Dx <= std_logic_vector(unsigned(rows_buffer(x_position+1)) - unsigned(rows_buffer(x_position-1)) + 2*(unsigned(rows_buffer(x_position+353)) - unsigned(rows_buffer(x_position+351))) + unsigned(rows_buffer(x_position+705)) - unsigned(rows_buffer(x_position+703)));
+                Dy <= std_logic_vector(unsigned(rows_buffer(x_position-1)) - unsigned(rows_buffer(x_position+703)) + 2*(unsigned(rows_buffer(x_position)) - unsigned(rows_buffer(x_position+704))) + unsigned(rows_buffer(x_position+1)) - unsigned(rows_buffer(x_position+705)));
         end case;
     end process task2;
 
@@ -93,13 +96,13 @@ begin
         if rising_edge(clk) then
             if reset = '1' then
                 addr <= (others => '0');
-                state <= idle;
+                state_t2 <= idle;
                 reg <= (others => '0');
                 --en <= '0';
                 --we <= '0';
             else
                 -- Registers update
-                state <= next_state;
+                state_t2 <= next_state_t2;
                 reg <= next_reg;
                 addr <= next_reg;
             end if;
