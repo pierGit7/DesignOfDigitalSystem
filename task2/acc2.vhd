@@ -110,7 +110,6 @@ begin
             when computation =>
                 finish <= '1';  -- Signal the completion
                 next_state_t2 <= idle;  -- Go back to idle after computation is done
-
             when others =>
                 next_state_t2 <= idle;
         end case;
