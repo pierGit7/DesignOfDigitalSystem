@@ -60,7 +60,7 @@ architecture rtl of acc is
     --TODO alias
     
     -- changing addres for main memory
-    signal reg, next_reg : halfword_t := halfword_zero;
+    signal next_addr : halfword_t := halfword_zero;
 
     --state of task2 process
     signal state_t2, next_state_t2 : state_type_t2 := idle;
@@ -77,8 +77,7 @@ begin
         -- Default assignments to prevent latches
         finish <= '0';
         next_state_t2 <= state_t2;
-        next_reg <= reg;
-        addr <= reg;
+        next_addr <= addr;
 
 
         case (state_t2) is
@@ -90,6 +89,7 @@ begin
 
             when read =>
                 x_position <= x_position + 1;
+                next_addr <=  addr + 1;
                 -- check wich row are we in
                 if x_position = 87  then
                     index_of_buffer <= index_of_buffer + 1;
@@ -132,7 +132,7 @@ begin
                 -- Registers update
                 state_t2 <= next_state_t2;
                 reg <= next_reg;
-                addr <= next_reg;
+                addr <= next_addr;
             end if;
         end if;
     end process register_process;
