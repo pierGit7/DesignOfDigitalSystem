@@ -114,16 +114,19 @@ begin
                 end if;
                 next_reg <= std_logic_vector(unsigned(reg) + 1);
             when computation =>
-                finish <= '1';  -- Signal the completion
                 next_state <= write;  -- Go back to idle after computation is done
             when write =>
-                dataW <= pixel_out;
+                dataW <= pixel_out(31 downto 0);
                 we <= '0';
+                next_write_reg <= std_logic_vector(unsigned(reg) - 25343);
                 next_state <= check_finish;
-                next_reg <= std_logic_vector(unsigned(reg) - 25343);
             when check_finish =>
-                next_state <= idle;
-                
+                if  (y_position = 2) AND (x_position = 87) then         
+                    next_state <= idle;
+                    finish <= '1';
+                else
+                    next_state <= read;
+                end if;
             when others =>
                 next_state <= idle;
         end case;
@@ -139,6 +142,7 @@ begin
                 addr <= (others => '0');
                 state <= idle;
                 reg <= (others => '0');
+                write_reg <= (others => '0');
                 y_position <= next_y_position;  -- Initialize y_position
                 x_position <= next_x_position;  -- Initialize x_position
                 index_of_buffer <= next_index_of_buffer;
