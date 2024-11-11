@@ -50,13 +50,13 @@ architecture rtl of acc is
 
     -- Buffer of three rows
     type row_buffer_array is array(0 to 87) of word_t;
-    type computation_register is std_logic_vector(0 to 47);
+    --type computation_register is std_logic_vector(0 downto 47);
 
     --TODO: init variables to 0
     -- buffer three rows to acces three words each clock cycle
     signal row1_buffer, row2_buffer, row3_buffer : row_buffer_array;
 
-    signal comp1, comp2, comp3 : computation_register;
+    signal comp1, comp2, comp3 : std_logic_vector(0 downto 47);
     --TODO alias
     
     -- changing addres for main memory
@@ -65,11 +65,11 @@ architecture rtl of acc is
     --state of task2 process
     signal state_t2, next_state_t2 : state_type_t2 := idle;
 
-    signal y_position : unsigned(10 downto 0) := (others => '0');  -- Explicit width
+    signal y_position : integer := 0;  -- Explicit width
     -- Start from pixel 1
-    signal x_position : unsigned(10 downto 0) := (others => '0');
+    signal x_position : integer := 0;
 
-    signal index_of_buffer : unsigned(10 downto 0) := (others => '0');
+    signal index_of_buffer : integer := 0;
 
 begin
     task2 : process(start, state_t2)
@@ -89,22 +89,22 @@ begin
                 end if;
 
             when read =>
-                x_position = x_position + '1';
+                x_position <= x_position + 1;
                 -- check wich row are we in
                 if x_position = 87  then
-                    index_of_buffer = index_of_buffer + '1';
+                    index_of_buffer <= index_of_buffer + 1;
                     if index_of_buffer = 2 then
-                        index_of_buffer = '0';
+                        index_of_buffer <= 0;
                     end if;
-                    y_position = y_position + '1';
-                    x_position = '0';
+                    y_position <= y_position + 1;
+                    x_position <= 0;
                 end if; 
-                if index_of_buffer = '0' then
-                    row1_buffer(x_position) = dataR;
-                elsif index_of_buffer = '1' then
-                    row2_buffer(x_position) = dataR;
+                if index_of_buffer = 0 then
+                    row1_buffer(x_position) <= dataR;
+                elsif index_of_buffer = 1 then
+                    row2_buffer(x_position) <= dataR;
                 else
-                    row3_buffer(x_position) = dataR;
+                    row3_buffer(x_position) <= dataR;
                 end if;
                 next_reg <= std_logic_vector(unsigned(reg) + 1);
             when computation =>
@@ -125,7 +125,7 @@ begin
                 addr <= (others => '0');
                 state_t2 <= idle;
                 reg <= (others => '0');
-                y_position <= (others => '0');  -- Initialize y_position
+                y_position <= 0;  -- Initialize y_position
                 --en <= '0';
                 --we <= '0';
             else
