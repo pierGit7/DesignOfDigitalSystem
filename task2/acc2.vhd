@@ -46,7 +46,7 @@ architecture rtl of acc is
 
     -- All internal signals are defined here
 
-    type state_type_t2 is (idle, read, computation);
+    type state_type_t2 is (idle, read, computation, write, check_finish);
 
     -- Buffer of three rows
     type row_buffer_array is array(0 to 87) of word_t;
@@ -60,7 +60,7 @@ architecture rtl of acc is
     --TODO alias
     
     -- changing addres for main memory
-    signal next_addr : halfword_t := halfword_zero;
+    signal reg, next_reg : halfword_t := halfword_zero;
 
     --state of task2 process
     signal state_t2, next_state_t2 : state_type_t2 := idle;
@@ -77,7 +77,8 @@ begin
         -- Default assignments to prevent latches
         finish <= '0';
         next_state_t2 <= state_t2;
-        next_addr <= addr;
+        next_reg <= reg;
+        addr <= reg;
 
 
         case (state_t2) is
@@ -89,7 +90,6 @@ begin
 
             when read =>
                 x_position <= x_position + 1;
-                next_addr <=  addr + 1;
                 -- check wich row are we in
                 if x_position = 87  then
                     index_of_buffer <= index_of_buffer + 1;
@@ -109,7 +109,14 @@ begin
                 next_reg <= std_logic_vector(unsigned(reg) + 1);
             when computation =>
                 finish <= '1';  -- Signal the completion
-                next_state_t2 <= idle;  -- Go back to idle after computation is done
+                next_state_t2 <= write;  -- Go back to idle after computation is done
+            when write =>
+                
+                next_state_t2 <= check_finish;
+                next_reg <= std_logic_vector(unsigned(reg) - 25343);
+            when check_finish =>
+                next_state_t2 <= idle;
+               
             when others =>
                 next_state_t2 <= idle;
         end case;
@@ -132,7 +139,7 @@ begin
                 -- Registers update
                 state_t2 <= next_state_t2;
                 reg <= next_reg;
-                addr <= next_addr;
+                addr <= next_reg;
             end if;
         end if;
     end process register_process;
