@@ -56,6 +56,7 @@ architecture rtl of acc is
     -- buffer three rows to acces three words each clock cycle
     signal row1_buffer, row2_buffer, row3_buffer : row_buffer_array;
 
+    -- computation registers
     signal comp1, comp2, comp3 : std_logic_vector(0 downto 47);
     --TODO alias
     
@@ -65,9 +66,9 @@ architecture rtl of acc is
     --state of task2 process
     signal state_t2, next_state_t2 : state_type_t2 := idle;
 
-    signal y_position : integer := 0;  -- Explicit width
+    signal y_position, next_y_position : integer := 0;  -- Explicit width
     -- Start from pixel 1
-    signal x_position : integer := 0;
+    signal x_position, next_x_position : integer := 0;
 
     signal index_of_buffer : integer := 0;
 
@@ -77,27 +78,24 @@ begin
         -- Default assignments to prevent latches
         finish <= '0';
         next_state_t2 <= state_t2;
+        --addr <= next_reg;
         next_reg <= reg;
-        addr <= reg;
-
-
         case (state_t2) is
             when idle =>
                 if start = '1' then 
                     en <= '1'; 
                     next_state_t2 <= read;                   
                 end if;
-
             when read =>
-                x_position <= x_position + 1;
+                next_x_position <= x_position + 1;
                 -- check wich row are we in
                 if x_position = 87  then
                     index_of_buffer <= index_of_buffer + 1;
                     if index_of_buffer = 2 then
                         index_of_buffer <= 0;
                     end if;
-                    y_position <= y_position + 1;
-                    x_position <= 0;
+                    next_y_position <= y_position + 1;
+                    next_x_position <= 0;
                 end if; 
                 if index_of_buffer = 0 then
                     row1_buffer(x_position) <= dataR;
@@ -106,17 +104,18 @@ begin
                 else
                     row3_buffer(x_position) <= dataR;
                 end if;
+                --TODO fill the flip flop with 3 by 6(4 from the first 3by4 and 2 from the next)
+                --TODO figure out when it's time to go to the computation
+                next_state_t2 <= idle;
                 next_reg <= std_logic_vector(unsigned(reg) + 1);
             when computation =>
                 finish <= '1';  -- Signal the completion
                 next_state_t2 <= write;  -- Go back to idle after computation is done
             when write =>
-                
                 next_state_t2 <= check_finish;
                 next_reg <= std_logic_vector(unsigned(reg) - 25343);
             when check_finish =>
                 next_state_t2 <= idle;
-               
             when others =>
                 next_state_t2 <= idle;
         end case;
@@ -132,14 +131,14 @@ begin
                 addr <= (others => '0');
                 state_t2 <= idle;
                 reg <= (others => '0');
-                y_position <= 0;  -- Initialize y_position
-                --en <= '0';
-                --we <= '0';
+                y_position <= 0; 
             else
                 -- Registers update
                 state_t2 <= next_state_t2;
                 reg <= next_reg;
                 addr <= next_reg;
+                y_position <= next_y_position;
+                x_position <= next_x_position;
             end if;
         end if;
     end process register_process;
