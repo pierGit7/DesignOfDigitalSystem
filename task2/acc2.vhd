@@ -49,55 +49,61 @@ architecture rtl of acc is
     type state_type_t2 is (idle, read, computation, write, check_finish);
 
     -- Buffer of three rows
-    type row_buffer_array is array(0 to 87) of word_t;
+    type row_buffer_array is array(87 to 0) of word_t;
     --type computation_register is std_logic_vector(0 downto 47);
 
     --TODO: init variables to 0
     -- buffer three rows to acces three words each clock cycle
     signal row1_buffer, row2_buffer, row3_buffer : row_buffer_array;
 
-    signal comp1, comp2, comp3 : std_logic_vector(0 downto 47);
+    signal comp1, comp2, comp3 : std_logic_vector(47 downto 0);
     --TODO alias
     
     -- changing addres for main memory
-    signal reg, next_reg : halfword_t := halfword_zero;
+    signal reg, next_reg, write_reg, next_write_reg : halfword_t := halfword_zero;
 
     --state of task2 process
-    signal state_t2, next_state_t2 : state_type_t2 := idle;
+    signal state, next_state : state_type_t2 := idle;
 
-    signal y_position : integer := 0;  -- Explicit width
+    signal y_position, next_y_position : integer := 0;  -- Explicit width
     -- Start from pixel 1
-    signal x_position : integer := 0;
+    signal x_position, next_x_position : integer := 0;
 
-    signal index_of_buffer : integer := 0;
+    signal index_of_buffer, next_index_of_buffer : integer := 0;
+    
+    signal pixel_out : std_logic_vector(7 downto 0);
 
 begin
-    task2 : process(start, state_t2)
+    task2 : process(start, state)
     begin
         -- Default assignments to prevent latches
         finish <= '0';
-        next_state_t2 <= state_t2;
+        next_state <= state;
         next_reg <= reg;
+        next_write_reg <= write_reg;
+        next_y_position <= y_position;
+        next_x_position <= x_position;
+        next_index_of_buffer <= index_of_buffer;
         addr <= reg;
 
 
-        case (state_t2) is
+        case (state) is
             when idle =>
                 if start = '1' then 
                     en <= '1'; 
-                    next_state_t2 <= read;                   
+                    next_state <= read;                   
                 end if;
 
             when read =>
-                x_position <= x_position + 1;
+                next_x_position <= x_position + 1;
                 -- check wich row are we in
                 if x_position = 87  then
-                    index_of_buffer <= index_of_buffer + 1;
+                    next_index_of_buffer <= index_of_buffer + 1;
                     if index_of_buffer = 2 then
-                        index_of_buffer <= 0;
+                        next_index_of_buffer <= 0;
                     end if;
-                    y_position <= y_position + 1;
-                    x_position <= 0;
+                    next_y_position <= y_position + 1;
+                    next_x_position <= 0;
                 end if; 
                 if index_of_buffer = 0 then
                     row1_buffer(x_position) <= dataR;
@@ -109,16 +115,17 @@ begin
                 next_reg <= std_logic_vector(unsigned(reg) + 1);
             when computation =>
                 finish <= '1';  -- Signal the completion
-                next_state_t2 <= write;  -- Go back to idle after computation is done
+                next_state <= write;  -- Go back to idle after computation is done
             when write =>
-                
-                next_state_t2 <= check_finish;
+                dataW <= pixel_out;
+                we <= '0';
+                next_state <= check_finish;
                 next_reg <= std_logic_vector(unsigned(reg) - 25343);
             when check_finish =>
-                next_state_t2 <= idle;
-               
+                next_state <= idle;
+                
             when others =>
-                next_state_t2 <= idle;
+                next_state <= idle;
         end case;
     end process task2;
     
@@ -130,14 +137,16 @@ begin
         if rising_edge(clk) then
             if reset = '1' then
                 addr <= (others => '0');
-                state_t2 <= idle;
+                state <= idle;
                 reg <= (others => '0');
-                y_position <= 0;  -- Initialize y_position
+                y_position <= next_y_position;  -- Initialize y_position
+                x_position <= next_x_position;  -- Initialize x_position
+                index_of_buffer <= next_index_of_buffer;
                 --en <= '0';
                 --we <= '0';
             else
                 -- Registers update
-                state_t2 <= next_state_t2;
+                state <= next_state;
                 reg <= next_reg;
                 addr <= next_reg;
             end if;
