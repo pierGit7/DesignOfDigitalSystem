@@ -46,7 +46,7 @@ architecture rtl of acc is
 
     -- All internal signals are defined here
 
-    type state_type is (idle, read, computation);
+    type state_type is (idle, read, computation, write);
 
     -- Buffer of three rows
     type row_buffer_array is array(87 to 0) of word_t;
@@ -82,16 +82,16 @@ begin
     begin
         -- Default assignments to prevent latches
         finish <= '0';
-        next_state_t2 <= state_t2;
+        next_state <= state;
         next_reg <= reg;
         addr <= reg;
 
 
-        case (state_t2) is
+        case (state) is
             when idle =>
                 if start = '1' then 
                     en <= '1'; 
-                    next_state_t2 <= read;                   
+                    next_state <= read;                   
                 end if;
 
             when read =>
@@ -117,25 +117,25 @@ begin
                 Dx_1 <= signed(unsigned(comp1(23 downto 16)) - unsigned(comp1(7 downto 0)) + 2*(unsigned(comp2(23 downto 16)) - unsigned(comp2(7 downto 0))) + unsigned(comp3(23 downto 16)) - unsigned(comp3(7 downto 0)));
                 Dy_1 <= signed(unsigned(comp1(7 downto 0)) - unsigned(comp3(7 downto 0)) + 2*(unsigned(comp1(15 downto 8)) - unsigned(comp3(15 downto 8))) + unsigned(comp1(23 downto 16)) - unsigned(comp3(23 downto 16)));
                 
-                Dx_2 <= signed(unsigned(comp1(31 downto 24)) - unsigned(comp1(7 downto 0)) + 2*(unsigned(comp2(23 downto 16)) - unsigned(comp2(7 downto 0))) + unsigned(comp3(23 downto 16)) - unsigned(comp3(7 downto 0)));
-                Dx_2 <= ;
+                Dx_2 <= signed(unsigned(comp1(31 downto 24)) - unsigned(comp1(15 downto 8)) + 2*(unsigned(comp2(31 downto 24)) - unsigned(comp2(15 downto 8))) + unsigned(comp3(31 downto 24)) - unsigned(comp3(15 downto 8)));
+                Dy_2 <= signed(unsigned(comp1(15 downto 8)) - unsigned(comp3(31 downto 24)) + 2*(unsigned(comp1(23 downto 16)) - unsigned(comp3(23 downto 16))) + unsigned(comp1(31 downto 24)) - unsigned(comp3(31 downto 24)));
                 
                 if output_flag = false then
                     pixel_out(15 downto 8) <= std_logic_vector(abs(Dx_1) + abs(Dy_1));
                     pixel_out(23 downto 16) <= std_logic_vector(abs(Dx_2) + abs(Dy_2));
                     output_flag <= true;
+                    next_state <= computation;
                 else
                     pixel_out(31 downto 24) <= std_logic_vector(abs(Dx_1) + abs(Dy_1));
                     pixel_out(39 downto 32) <= std_logic_vector(abs(Dx_2) + abs(Dy_2));
                     output_flag <= false;
                     next_state <= write;
                 end if;
-
-
                 next_reg <= std_logic_vector(unsigned(reg) + 25343);
-                
+            when write =>
+            
             when others =>
-                next_state_t2 <= idle;
+                next_state <= idle;
         end case;
     end process task2;
     
@@ -147,14 +147,14 @@ begin
         if rising_edge(clk) then
             if reset = '1' then
                 addr <= (others => '0');
-                state_t2 <= idle;
+                state <= idle;
                 reg <= (others => '0');
                 y_position <= 0;  -- Initialize y_position
                 --en <= '0';
                 --we <= '0';
             else
                 -- Registers update
-                state_t2 <= next_state_t2;
+                state <= next_state;
                 reg <= next_reg;
                 addr <= next_reg;
             end if;
