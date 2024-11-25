@@ -61,7 +61,8 @@ architecture rtl of acc is
     --TODO alias
     
     -- changing addres for main memory
-    signal reg, next_reg, write_reg, next_write_reg, read_reg, next_read_reg : halfword_t := halfword_zero;
+    signal reg, next_reg, read_reg, next_read_reg : halfword_t := halfword_zero;
+    signal next_write_reg, write_reg : halfword_t := std_logic_vector(to_unsigned(25343, 16));
 
     --state of task2 process
     signal state, next_state : state_type := idle;
@@ -76,7 +77,7 @@ architecture rtl of acc is
     
     signal EOL_flag : boolean := false;
     
-    signal pixel_out, next_pixel_out, pixel_temp : std_logic_vector(39 downto 0);
+    signal pixel_out, next_pixel_out, pixel_temp : std_logic_vector(39 downto 0) := (others => '0');
 
 begin
     task2 : process(start, state, x_position)
@@ -163,11 +164,12 @@ begin
                         row3_buffer(x_position) <= dataR;
                     end if;
                 end if;
-                we <= '1';
+                we <= '0';
                 next_state <= write;	
                 next_read_reg <= std_logic_vector(unsigned(read_reg) + 1); -- Sets the write register
             when write =>
 				next_reg <= read_reg; 
+                we <= '1';
 				-- TODO: CHECK 39 TO 8              --Sets the addr to the current read addr
                 -- dataW <= pixel_out(39 downto 8);    --Writes the current pixel buffer to memory
                 -- we <= '0'; --to be removed
@@ -209,24 +211,19 @@ begin
     
     compute_process : process(output_flag)
     begin
-        if EOL_flag = false then
+        if EOL_flag = false then 
             if output_flag = false then
                 pixel_temp <= std_logic_vector(shift_left(unsigned(pixel_temp), 32));
-                --Sets the pixel temp register
-                pixel_temp(31 downto 24) <= std_logic_vector(abs(signed(unsigned(comp1(31 downto 24)) - unsigned(comp1(47 downto 40)) + 2*(unsigned(comp2(31 downto 24)) - unsigned(comp2(47 downto 40))) + unsigned(comp3(31 downto 24)) - unsigned(comp3(47 downto 40)))) + abs(signed(unsigned(comp1(47 downto 40)) - unsigned(comp3(47 downto 40)) + 2*(unsigned(comp1(39 downto 32)) - unsigned(comp3(39 downto 32))) + unsigned(comp1(31 downto 24)) - unsigned(comp3(31 downto 24)))));
-                pixel_temp(23 downto 16) <= std_logic_vector(abs(signed(unsigned(comp1(23 downto 16)) - unsigned(comp1(39 downto 32)) + 2*(unsigned(comp2(23 downto 16)) - unsigned(comp2(39 downto 32))) + unsigned(comp3(23 downto 16)) - unsigned(comp3(39 downto 32)))) + abs(signed(unsigned(comp1(39 downto 32)) - unsigned(comp3(39 downto 32)) + 2*(unsigned(comp1(31 downto 24)) - unsigned(comp3(31 downto 24))) + unsigned(comp1(23 downto 16)) - unsigned(comp3(23 downto 16)))));
-               -- Shifting Comp registers to place next two pixels to be computed at the same place 
+                -- Sets the pixel temp register
+                pixel_temp(31 downto 24) <= std_logic_vector(abs(signed(unsigned(comp1(31 downto 24)) - unsigned(comp1(47 downto 40)) + 2 * (unsigned(comp2(31 downto 24)) - unsigned(comp2(47 downto 40))) + unsigned(comp3(31 downto 24)) - unsigned(comp3(47 downto 40)))) + abs(signed(unsigned(comp1(47 downto 40)) - unsigned(comp3(47 downto 40)) + 2 * (unsigned(comp1(39 downto 32)) - unsigned(comp3(39 downto 32))) + unsigned(comp1(31 downto 24)) - unsigned(comp3(31 downto 24)))));
+                pixel_temp(23 downto 16) <= std_logic_vector(abs(signed(unsigned(comp1(23 downto 16)) - unsigned(comp1(39 downto 32)) + 2 * (unsigned(comp2(23 downto 16)) - unsigned(comp2(39 downto 32))) + unsigned(comp3(23 downto 16)) - unsigned(comp3(39 downto 32)))) + abs(signed(unsigned(comp1(39 downto 32)) - unsigned(comp3(39 downto 32)) + 2 * (unsigned(comp1(31 downto 24)) - unsigned(comp3(31 downto 24))) + unsigned(comp1(23 downto 16)) - unsigned(comp3(23 downto 16)))));
+                -- Shifting Comp registers to place next two pixels to be computed at the same place 
             else
+                dataW <= (others => '0');
                 dataW(31 downto 8) <= pixel_temp(39 downto 16);
-                --Sets the real pixel register for writing
-               dataW(7 downto 0) <= std_logic_vector(abs(signed(unsigned(comp1(31 downto 24)) - unsigned(comp1(47 downto 40)) + 2*(unsigned(comp2(31 downto 24)) - unsigned(comp2(47 downto 40))) + unsigned(comp3(31 downto 24)) - unsigned(comp3(47 downto 40)))) + abs(signed(unsigned(comp1(47 downto 40)) - unsigned(comp3(47 downto 40)) + 2*(unsigned(comp1(39 downto 32)) - unsigned(comp3(39 downto 32))) + unsigned(comp1(31 downto 24)) - unsigned(comp3(31 downto 24)))));
-               pixel_temp(7 downto 0) <= std_logic_vector(abs(signed(unsigned(comp1(23 downto 16)) - unsigned(comp1(39 downto 32)) + 2*(unsigned(comp2(23 downto 16)) - unsigned(comp2(39 downto 32))) + unsigned(comp3(23 downto 16)) - unsigned(comp3(39 downto 32)))) + abs(signed(unsigned(comp1(39 downto 32)) - unsigned(comp3(39 downto 32)) + 2*(unsigned(comp1(31 downto 24)) - unsigned(comp3(31 downto 24))) + unsigned(comp1(23 downto 16)) - unsigned(comp3(23 downto 16)))));
-            --     next_pixel_out <= pixel_temp;
-                
-            --     --Sets the real pixel register for writing
-            --    next_pixel_out(31 downto 24) <= std_logic_vector(abs(signed(unsigned(comp1(31 downto 24)) - unsigned(comp1(47 downto 40)) + 2*(unsigned(comp2(31 downto 24)) - unsigned(comp2(47 downto 40))) + unsigned(comp3(31 downto 24)) - unsigned(comp3(47 downto 40)))) + abs(signed(unsigned(comp1(47 downto 40)) - unsigned(comp3(47 downto 40)) + 2*(unsigned(comp1(39 downto 32)) - unsigned(comp3(39 downto 32))) + unsigned(comp1(31 downto 24)) - unsigned(comp3(31 downto 24)))));
-            --    next_pixel_out(39 downto 32) <= std_logic_vector(abs(signed(unsigned(comp1(23 downto 16)) - unsigned(comp1(39 downto 32)) + 2*(unsigned(comp2(23 downto 16)) - unsigned(comp2(39 downto 32))) + unsigned(comp3(23 downto 16)) - unsigned(comp3(39 downto 32)))) + abs(signed(unsigned(comp1(39 downto 32)) - unsigned(comp3(39 downto 32)) + 2*(unsigned(comp1(31 downto 24)) - unsigned(comp3(31 downto 24))) + unsigned(comp1(23 downto 16)) - unsigned(comp3(23 downto 16)))));
-                
+                -- Sets the real pixel register for writing
+                dataW(7 downto 0) <= std_logic_vector(abs(signed(unsigned(comp1(31 downto 24)) - unsigned(comp1(47 downto 40)) + 2 * (unsigned(comp2(31 downto 24)) - unsigned(comp2(47 downto 40))) + unsigned(comp3(31 downto 24)) - unsigned(comp3(47 downto 40)))) + abs(signed(unsigned(comp1(47 downto 40)) - unsigned(comp3(47 downto 40)) + 2 * (unsigned(comp1(39 downto 32)) - unsigned(comp3(39 downto 32))) + unsigned(comp1(31 downto 24)) - unsigned(comp3(31 downto 24)))));
+                pixel_temp(7 downto 0) <= std_logic_vector(abs(signed(unsigned(comp1(23 downto 16)) - unsigned(comp1(39 downto 32)) + 2 * (unsigned(comp2(23 downto 16)) - unsigned(comp2(39 downto 32))) + unsigned(comp3(23 downto 16)) - unsigned(comp3(39 downto 32)))) + abs(signed(unsigned(comp1(39 downto 32)) - unsigned(comp3(39 downto 32)) + 2 * (unsigned(comp1(31 downto 24)) - unsigned(comp3(31 downto 24))) + unsigned(comp1(23 downto 16)) - unsigned(comp3(23 downto 16)))));
             end if;
          end if;
     end process compute_process;
