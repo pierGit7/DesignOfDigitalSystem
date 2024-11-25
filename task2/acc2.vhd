@@ -139,6 +139,12 @@ begin
 				next_reg <= write_reg;                                              -- Keeping track of which write address we are in
 				EOL_flag <= false;
                 -- check wich row are we in
+                we <= '0';
+                next_state <= write;	
+                next_read_reg <= std_logic_vector(unsigned(read_reg) + 1); -- Sets the write register
+            when write =>
+				next_reg <= read_reg; 
+                we <= '1';
                 if x_position = 87  then
                     EOL_flag <= true;
                     index_of_buffer <= index_of_buffer + 1;
@@ -164,12 +170,6 @@ begin
                         row3_buffer(x_position) <= dataR;
                     end if;
                 end if;
-                we <= '0';
-                next_state <= write;	
-                next_read_reg <= std_logic_vector(unsigned(read_reg) + 1); -- Sets the write register
-            when write =>
-				next_reg <= read_reg; 
-                we <= '1';
 				-- TODO: CHECK 39 TO 8              --Sets the addr to the current read addr
                 -- dataW <= pixel_out(39 downto 8);    --Writes the current pixel buffer to memory
                 -- we <= '0'; --to be removed
