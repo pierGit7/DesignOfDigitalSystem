@@ -139,12 +139,6 @@ begin
 				next_reg <= write_reg;                                              -- Keeping track of which write address we are in
 				EOL_flag <= false;
                 -- check wich row are we in
-                we <= '0';
-                next_state <= write;	
-                next_read_reg <= std_logic_vector(unsigned(read_reg) + 1); -- Sets the write register
-            when write =>
-				next_reg <= read_reg; 
-                we <= '1';
                 if x_position = 87  then
                     EOL_flag <= true;
                     index_of_buffer <= index_of_buffer + 1;
@@ -161,6 +155,12 @@ begin
                     comp2 <= std_logic_vector(shift_left(unsigned(comp2), 16));
                     comp3 <= std_logic_vector(shift_left(unsigned(comp3), 16));
 				end if;
+                we <= '0';
+                next_state <= write;	
+                next_read_reg <= std_logic_vector(unsigned(read_reg) + 1); -- Sets the write register
+            when write =>
+				next_reg <= read_reg; 
+                we <= '1';
 				if NOT((x_position >= 87) AND (y_position >= 287)) then --Check if we are at the end of the image
                     if index_of_buffer = 0 then
                         row1_buffer(x_position) <= dataR;
