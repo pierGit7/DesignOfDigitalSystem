@@ -46,23 +46,26 @@ architecture rtl of acc is
 
     -- All internal signals are defined here
 
-    type state_type is (idle, read, computation, write, check_finish, initialise);
+    type state_type is (idle, read, computation, write, check_finish, initialise, load);
+
+    type computation_state is (first_computation, second_computation, no_computation);
 
     -- Buffer of three rows
     type row_buffer_array is array(0 to 87) of word_t;
     --type computation_register is std_logic_vector(0 downto 47);
 
-    --TODO: init variables to 0
     -- buffer three rows to acces three words each clock cycle
     signal row1_buffer, row2_buffer, row3_buffer : row_buffer_array := (others=>(others => '0'));
 
     -- computation registers
-    signal comp1, comp2, comp3 : std_logic_vector(47 downto 0);
-    --TODO alias
+    signal comp1, comp2, comp3 : std_logic_vector(47 downto 0) := (others => '0');
     
-    -- changing addres for main memory
+    -- computation state
+    signal comp_state, next_comp_state : computation_state := no_computation;
+    
+    -- changing address for main memory
     signal reg, next_reg, read_reg, next_read_reg : halfword_t := halfword_zero;
-    signal next_write_reg, write_reg : halfword_t := std_logic_vector(to_unsigned(25343, 16));
+    signal next_write_reg, write_reg : halfword_t := std_logic_vector(to_unsigned(25432, 16));
 
     --state of task2 process
     signal state, next_state : state_type := idle;
@@ -70,14 +73,25 @@ architecture rtl of acc is
     signal y_position, next_y_position : integer := 0;  -- Explicit width
     -- Start from pixel 1
     signal x_position, next_x_position : integer := 0;
-
-    signal index_of_buffer, index_of_load, next_index_of_load : integer := 0;
+    
+    signal index_of_buffer: integer := 0;
+    -- init to 1 because the first address is loadded during the init phase
+    signal index_of_computation : integer := 1;
     
     signal output_flag : boolean := true;
     
     signal EOL_flag : boolean := false;
     
     signal pixel_out, next_pixel_out, pixel_temp : std_logic_vector(39 downto 0) := (others => '0');
+    
+    
+    --signal pixel_out, next_pixel_out, pixel_temp, next_pixel_temp : std_logic_vector(39 downto 0) := (others => '0');
+    signal pixel_store, next_pixel_store : std_logic_vector(7 downto 0) := (others => '0');
+ 
+    signal p1_1, p2_1, p3_1, p4_1, p1_2, p2_2, p3_2, p4_2 : signed(10 downto 0) := (others => '0');
+    signal Dx_pix1_sig, Dy_pix1_sig, Dx_pix2_sig, Dy_pix2_sig : signed(10 downto 0) := (others => '0');
+    --signal pix1, pix2 : signed(11 downto 0) := (others => '0');
+    signal pix1_sig, pix2_sig : integer := 0; 
 
 begin
     task2 : process(start, state, x_position)
@@ -93,140 +107,355 @@ begin
                 if start = '1' then 
                     we <= '0';
                     en <= '1'; 
-                    next_state <= initialise;                   
+                    next_state <= initialise; 
+                    next_reg <=   std_logic_vector(unsigned(reg) + 1);                
                 end if;
-			when initialise => -- Read the first and second lines into Buffers then begin computing the first 4 pixels
-				next_x_position <= x_position + 1; 
-				next_state <= initialise;
-                -- check wich row are we in
-                EOL_flag <= false;
-                if x_position = 87  then -- Check end of line
-                    EOL_flag <= true;    -- Set end of line flag for computation (the computation function should not run for the last and first pixels of a line)
-                    index_of_buffer <= index_of_buffer + 1;
-                    if index_of_buffer = 2 then
-                        index_of_buffer <= 0;
-                    end if;
-                    next_y_position <= y_position + 1;
-                    next_x_position <= 0;
-                end if;
-                if index_of_buffer = 0 then
-                    row1_buffer(x_position) <= dataR; -- Read to first buffer
+            when initialise =>
+
+            --keep reading state
+                we <= '0';
+                en <= '1'; 
+
+                -- fill the correct buffer
+                if index_of_buffer = 0 then 
+                    row1_buffer(x_position) <= dataR;
                 elsif index_of_buffer = 1 then
-                    row2_buffer(x_position) <= dataR; -- Read to second buffer
-				else 
-					row3_buffer(x_position) <= dataR; -- Read to third buffer
-					if (index_of_load = 0) AND (x_position = 1) then 										-- load first 4 pixels into computation buffers
-						comp1(47 downto 16) <= row1_buffer(index_of_load);
-						comp2(47 downto 16) <= row2_buffer(index_of_load);
-						comp3(47 downto 16) <= row2_buffer(index_of_load);
-						next_index_of_load <= index_of_load + 1;
-						output_flag <= false; 									    -- Begin first computation 
-					elsif index_of_load = 1 then 									-- Shift 2 pixels out and load second 4 pixels into computation buffers
-					    comp1 <= std_logic_vector(shift_left(unsigned(comp1), 16));
-                        comp2 <= std_logic_vector(shift_left(unsigned(comp2), 16));
-                        comp3 <= std_logic_vector(shift_left(unsigned(comp3), 16));
-						comp1(31 downto 0) <= row1_buffer(index_of_load);
-						comp2(31 downto 0) <= row2_buffer(index_of_load);
-						comp3(31 downto 0) <= row3_buffer(index_of_load);
-						next_index_of_load <= index_of_load + 1;
-						output_flag <= true; 									    -- Begin second computation
-						next_state <= read;
-				    end if;
+                    row2_buffer(x_position) <= dataR;
+                elsif index_of_buffer = 2 then
+                    row3_buffer(x_position) <= dataR;
                 end if;
-                next_read_reg <= std_logic_vector(unsigned(read_reg) + 1); 
-                next_reg  <= read_reg;
+                
+
+                -- see if you have read the first 3 addresses of the third row and start writing
+                --otherwise go to the next addresses and x_position
+                if index_of_buffer = 2 and x_position = 2 then
+                    -- stop reading
+                    we <= '0';
+                    en <= '0';
+                    -- load the next computation
+                    next_state <= load;
+                    next_reg <= write_reg;
+                    next_x_position <= x_position + 1;
+                else
+                    -- increment the index of buffer
+                    if x_position = 87 then 
+                        index_of_buffer <= index_of_buffer + 1;
+                        next_x_position <= 0;
+                    else
+                        next_x_position <= x_position + 1;
+                    end if;
+                    next_reg <= std_logic_vector(unsigned(reg) + 1);
+                end if;
+                
+                
+                -- --start the computation when you have the two addresses of the third row
+                -- if index_of_buffer = 2 and x_position = 1 then
+                --     output_flag <= not output_flag;
+
+                --     --fill computation params
+                --     comp1 <= row1_buffer(1)(15 downto 0) & row1_buffer(0);
+                --     comp2 <= row2_buffer(1)(15 downto 0) & row2_buffer(0);
+                --     comp3 <= dataR(15 downto 0) & row3_buffer(0); --just read the second address
+                -- end if;
+
+
+                --start the computation when you have the two addresses of the third row
+                if index_of_buffer = 2 and x_position = 1 then
+
+                    -- start computing the first 2 pixels
+                    next_comp_state <= first_computation;
+
+                    --fill computation params. only fill:
+                    -- 0, 0, pixel1, pixel2, pixel3, pixel4 (pixel of row1)
+                    -- 0, 0, pixel1, pixel2, pixel3, pixel4 (pixel of row2)
+                    -- 0, 0, pixel1, pixel2, pixel3, pixel4 (pixel of row3)
+                    comp1(31 downto 0) <=  row1_buffer(0);
+                    comp2(31 downto 0) <=  row2_buffer(0);
+                    comp3(31 downto 0) <=  row3_buffer(0); 
+                end if;
+                
+                -- take the last read registers address
+                next_read_reg <= next_reg;
+            when write =>
+            --do something
+            
+            -- writing flag
+            we <= '1';
+            en <= '1';
+            
+            if unsigned(write_reg) = 50600 then 
+                finish <= '1';
+            end if;
+            
+            --increment the address
+            next_write_reg <= std_logic_vector(unsigned(write_reg) + 1);
+            next_reg <= read_reg;
+
+            next_state <= load;
+            when load =>
+                
+                --  shift the computation registers to the right and keep just the last byte 
+                comp1 <= std_logic_vector(shift_right(unsigned(comp1), 16));
+                comp2 <= std_logic_vector(shift_right(unsigned(comp2), 16));
+                comp3 <= std_logic_vector(shift_right(unsigned(comp3), 16));
+                    
+
+                -- Checks which computation reg needs which pixels
+                -- how do you increment the index ? the index represent wich position you are computing
+                if index_of_buffer = 2 then                                
+					comp1(47 downto 16) <= row1_buffer(index_of_computation);
+					comp2(47 downto 16) <= row2_buffer(index_of_computation);
+					comp3(47 downto 16) <= row3_buffer(index_of_computation);
+				elsif index_of_buffer = 0 then
+					comp1(47 downto 16) <= row2_buffer(index_of_computation);
+					comp2(47 downto 16) <= row3_buffer(index_of_computation);
+					comp3(47 downto 16) <= row1_buffer(index_of_computation);
+				else 
+					comp1(47 downto 16) <= row3_buffer(index_of_computation);
+					comp2(47 downto 16) <= row1_buffer(index_of_computation);
+					comp3(47 downto 16) <= row2_buffer(index_of_computation);
+				end if;
+
+                -- check if you finish this row
+                if index_of_computation = 87 then
+                    index_of_computation <= 0;
+                else
+                    index_of_computation <= index_of_computation + 1;
+                end if;
+
+                -- first or second computation ?
+                if comp_state = first_computation then
+                    next_comp_state <= second_computation;
+                else
+                    next_comp_state <= first_computation;
+                end if;
+
+                
+                
+                --prepare for read
+                we <= '0';
+                en <= '1';
+                next_state <= read;
+                --load the computation accordingly and start the new computation
+            
             when read =>
-				next_reg <= write_reg;                                              -- Keeping track of which write address we are in
-				EOL_flag <= false;
-                -- check wich row are we in
-                if x_position = 87  then
-                    EOL_flag <= true;
-                    index_of_buffer <= index_of_buffer + 1;
+                
+                
+                -- fill the correct buffer
+                if index_of_buffer = 0 then 
+                    row1_buffer(x_position) <= dataR;
+                elsif index_of_buffer = 1 then
+                    row2_buffer(x_position) <= dataR;
+                elsif index_of_buffer = 2 then
+                    row3_buffer(x_position) <= dataR;
+                end if;
+
+
+                -- increment the index of buffer
+                if x_position = 87 then 
                     if index_of_buffer = 2 then
                         index_of_buffer <= 0;
+                    else
+                        index_of_buffer <= index_of_buffer + 1;
                     end if;
-                    next_y_position <= y_position + 1;
                     next_x_position <= 0;
                 else
                     next_x_position <= x_position + 1;
-                    output_flag <= false;	--Begin Computation
-					-- Shifting Comp registers to place next two pixels to be computed at the same place
-                    comp1 <= std_logic_vector(shift_left(unsigned(comp1), 16));
-                    comp2 <= std_logic_vector(shift_left(unsigned(comp2), 16));
-                    comp3 <= std_logic_vector(shift_left(unsigned(comp3), 16));
-				end if;
-                we <= '0';
-                next_state <= write;	
-                next_read_reg <= std_logic_vector(unsigned(read_reg) + 1); -- Sets the write register
-            when write =>
-				next_reg <= read_reg; 
-                we <= '1';
-				if NOT((x_position >= 87) AND (y_position >= 287)) then --Check if we are at the end of the image
-                    if index_of_buffer = 0 then
-                        row1_buffer(x_position) <= dataR;
-                    elsif index_of_buffer = 1 then
-                        row2_buffer(x_position) <= dataR;
-                    else
-                        row3_buffer(x_position) <= dataR;
-                    end if;
                 end if;
-				-- TODO: CHECK 39 TO 8              --Sets the addr to the current read addr
-                -- dataW <= pixel_out(39 downto 8);    --Writes the current pixel buffer to memory
-                -- we <= '0'; --to be removed
-                next_write_reg <= std_logic_vector(unsigned(write_reg) + 1); --increments the writing addr
-				next_state <= read;
-				-- Shifting Comp registers to place next two pixels to be computed at the same place
-                comp1 <= std_logic_vector(shift_left(unsigned(comp1), 16));
-                comp2 <= std_logic_vector(shift_left(unsigned(comp2), 16));
-                comp3 <= std_logic_vector(shift_left(unsigned(comp3), 16));
-                if index_of_load = 87 then
-                    next_index_of_load <= 0;
-                else 
-                    next_index_of_load <= index_of_load + 1;
-                end if;                   -- increments the loading index
-				if index_of_buffer = 2 then                                  -- Checks which computation buffer needs which pixels
-					comp1(31 downto 0) <= row1_buffer(index_of_load);
-					comp2(31 downto 0) <= row2_buffer(index_of_load);
-					comp3(31 downto 0) <= row3_buffer(index_of_load);
-				elsif index_of_buffer = 0 then
-					comp1(31 downto 0) <= row2_buffer(index_of_load);
-					comp2(31 downto 0) <= row3_buffer(index_of_load);
-					comp3(31 downto 0) <= row1_buffer(index_of_load);
-				else 
-					comp1(31 downto 0) <= row3_buffer(index_of_load);
-					comp2(31 downto 0) <= row1_buffer(index_of_load);
-					comp3(31 downto 0) <= row2_buffer(index_of_load);
-				end if;
-
-				output_flag <= true;	--Begin Computation
-				
-				if unsigned(write_reg) = 50335 then     --Check if write is at the end of the image
-				    finish <= '1';
-				    next_state <= idle;
-				end if;
+                
+                --next state
+                next_read_reg <= std_logic_vector(unsigned(read_reg) + 1);
+                next_reg <= write_reg;
+                next_state <= write;
+                
+                --placeholder to finish the reading
+                if unsigned(read_reg) = 25344 then
+                    finish <= '1';
+                end if;
+                
             when others =>
                 next_state <= idle;
+                null;
         end case;
     end process task2;
     
-    compute_process : process(output_flag)
+
+
+
+
+
+
+
+    compute_process : process(comp_state)
+ 
+    variable p1, p2, p3, p4, p5, p6 : signed(8 downto 0) := (others => '0');
+    variable Dx_pix1_var, Dy_pix1_var, Dx_pix2_var, Dy_pix2_var : signed(10 downto 0) := (others => '0');
+    variable pix : integer := 0;
+ 
     begin
+        next_pixel_store <= pixel_store;
+ 
         if EOL_flag = false then 
-            if output_flag = false then
-                pixel_temp <= std_logic_vector(shift_left(unsigned(pixel_temp), 32));
+        -- 
+           case(comp_state) is 
+            when first_computation =>
+                dataW(7 downto 0) <= pixel_store;
+ 
                 -- Sets the pixel temp register
-                pixel_temp(31 downto 24) <= std_logic_vector(abs(signed(unsigned(comp1(31 downto 24)) - unsigned(comp1(47 downto 40)) + 2 * (unsigned(comp2(31 downto 24)) - unsigned(comp2(47 downto 40))) + unsigned(comp3(31 downto 24)) - unsigned(comp3(47 downto 40)))) + abs(signed(unsigned(comp1(47 downto 40)) - unsigned(comp3(47 downto 40)) + 2 * (unsigned(comp1(39 downto 32)) - unsigned(comp3(39 downto 32))) + unsigned(comp1(31 downto 24)) - unsigned(comp3(31 downto 24)))));
-                pixel_temp(23 downto 16) <= std_logic_vector(abs(signed(unsigned(comp1(23 downto 16)) - unsigned(comp1(39 downto 32)) + 2 * (unsigned(comp2(23 downto 16)) - unsigned(comp2(39 downto 32))) + unsigned(comp3(23 downto 16)) - unsigned(comp3(39 downto 32)))) + abs(signed(unsigned(comp1(39 downto 32)) - unsigned(comp3(39 downto 32)) + 2 * (unsigned(comp1(31 downto 24)) - unsigned(comp3(31 downto 24))) + unsigned(comp1(23 downto 16)) - unsigned(comp3(23 downto 16)))));
+                p1 := to_signed(to_integer(unsigned(comp1(23 downto 16))), 9);
+                p2 := to_signed(to_integer(unsigned(comp1(7 downto 0))), 9);
+                p3 := to_signed(to_integer(unsigned(comp2(23 downto 16))), 9);
+                p4 := to_signed(to_integer(unsigned(comp2(7 downto 0))), 9);
+                p5 := to_signed(to_integer(unsigned(comp3(23 downto 16))), 9);
+                p6 := to_signed(to_integer(unsigned(comp3(7 downto 0))), 9);
+ 
+                p1_1 <= resize(p1, 11) - resize(p2, 11);
+                p2_1 <= resize(2*p3, 11);
+                p3_1 <= resize(2*p4, 11);
+                p4_1 <= resize(p5, 11) - resize(p6, 11);
+ 
+                Dx_pix1_var := resize(p1, 11) - resize(p2, 11) + resize(2*p3, 11) - resize(2*p4, 11) + resize(p5, 11) - resize(p6, 11);
+ 
+                p1 := to_signed(to_integer(unsigned(comp1(7 downto 0))), 9);
+                p2 := to_signed(to_integer(unsigned(comp3(7 downto 0))), 9);
+                p3 := to_signed(to_integer(unsigned(comp1(15 downto 8))), 9);
+                p4 := to_signed(to_integer(unsigned(comp3(15 downto 8))), 9);
+                p5 := to_signed(to_integer(unsigned(comp1(23 downto 16))), 9);
+                p6 := to_signed(to_integer(unsigned(comp3(23 downto 16))), 9);
+ 
+                p1_2 <= resize(p1, 11) - resize(p2, 11);
+                p2_2 <= resize(2*p3, 11);
+                p3_2 <= resize(2*p4, 11);
+                p4_2 <= resize(p5, 11) - resize(p6, 11);
+ 
+                Dy_pix1_var := resize(p1, 11) - resize(p2, 11) + resize(2*p3, 11) - resize(2*p4, 11) + resize(p5, 11) - resize(p6, 11);
+ 
+                Dx_pix1_sig <= Dx_pix1_var;
+                Dy_pix1_sig <= Dy_pix1_var;
+ 
+                pix := to_integer(abs(Dx_pix1_var) + abs(Dy_pix1_var));
+                pix1_sig <= pix;
+ 
+                -- If final value is greater than 255, clip to 255
+                if pix > 255 then
+                    dataW(15 downto 8) <= (others => '1');
+                else
+                    dataW(15 downto 8) <= std_logic_vector(to_unsigned(pix, 8));
+                end if;
+ 
+                p1 := to_signed(to_integer(unsigned(comp1(31 downto 24))), 9);
+                p2 := to_signed(to_integer(unsigned(comp1(15 downto 8))), 9);
+                p3 := to_signed(to_integer(unsigned(comp2(31 downto 24))), 9);
+                p4 := to_signed(to_integer(unsigned(comp2(15 downto 8))), 9);
+                p5 := to_signed(to_integer(unsigned(comp3(31 downto 24))), 9);
+                p6 := to_signed(to_integer(unsigned(comp3(15 downto 8))), 9);
+ 
+                Dx_pix2_var := resize(p1, 11) - resize(p2, 11) + resize(2*p3, 11) - resize(2*p4, 11) + resize(p5, 11) - resize(p6, 11);
+ 
+                p1 := to_signed(to_integer(unsigned(comp1(15 downto 8))), 9);
+                p2 := to_signed(to_integer(unsigned(comp3(15 downto 8))), 9);
+                p3 := to_signed(to_integer(unsigned(comp1(23 downto 16))), 9);
+                p4 := to_signed(to_integer(unsigned(comp3(23 downto 16))), 9);
+                p5 := to_signed(to_integer(unsigned(comp1(31 downto 24))), 9);
+                p6 := to_signed(to_integer(unsigned(comp3(31 downto 24))), 9);
+ 
+                Dy_pix2_var := resize(p1, 11) - resize(p2, 11) + resize(2*p3, 11) - resize(2*p4, 11) + resize(p5, 11) - resize(p6, 11);
+ 
+                Dx_pix2_sig <= Dx_pix2_var;
+                Dy_pix2_sig <= Dy_pix2_var;
+ 
+                pix := to_integer(abs(Dx_pix2_var) + abs(Dy_pix2_var));
+                pix2_sig <= pix;
+ 
+                -- If final value is greater than 255, clip to 255
+                if pix > 255 then
+                    dataW(23 downto 16) <= (others => '1');
+                else
+                    dataW(23 downto 16) <= std_logic_vector(to_unsigned(pix, 8));
+                end if;
                 -- Shifting Comp registers to place next two pixels to be computed at the same place 
-            else
-                dataW <= (others => '0');
-                dataW(31 downto 8) <= pixel_temp(39 downto 16);
+            when second_computation =>       
+                p1 := to_signed(to_integer(unsigned(comp1(23 downto 16))), 9);
+                p2 := to_signed(to_integer(unsigned(comp1(7 downto 0))), 9);
+                p3 := to_signed(to_integer(unsigned(comp2(23 downto 16))), 9);
+                p4 := to_signed(to_integer(unsigned(comp2(7 downto 0))), 9);
+                p5 := to_signed(to_integer(unsigned(comp3(23 downto 16))), 9);
+                p6 := to_signed(to_integer(unsigned(comp3(7 downto 0))), 9);
+ 
+                p1_1 <= resize(p1, 11) - resize(p2, 11);
+                p2_1 <= resize(2*p3, 11);
+                p3_1 <= resize(2*p4, 11);
+                p4_1 <= resize(p5, 11) - resize(p6, 11);
+ 
+                Dx_pix1_var := resize(p1, 11) - resize(p2, 11) + resize(2*p3, 11) - resize(2*p4, 11) + resize(p5, 11) - resize(p6, 11);
+ 
+                p1 := to_signed(to_integer(unsigned(comp1(7 downto 0))), 9);
+                p2 := to_signed(to_integer(unsigned(comp3(7 downto 0))), 9);
+                p3 := to_signed(to_integer(unsigned(comp1(15 downto 8))), 9);
+                p4 := to_signed(to_integer(unsigned(comp3(15 downto 8))), 9);
+                p5 := to_signed(to_integer(unsigned(comp1(23 downto 16))), 9);
+                p6 := to_signed(to_integer(unsigned(comp3(23 downto 16))), 9);
+ 
+                p1_2 <= resize(p1, 11) - resize(p2, 11);
+                p2_2 <= resize(2*p3, 11);
+                p3_2 <= resize(2*p4, 11);
+                p4_2 <= resize(p5, 11) - resize(p6, 11);
+ 
+                Dy_pix1_var := resize(p1, 11) - resize(p2, 11) + resize(2*p3, 11) - resize(2*p4, 11) + resize(p5, 11) - resize(p6, 11);
+ 
+                Dx_pix1_sig <= Dx_pix1_var;
+                Dy_pix1_sig <= Dy_pix1_var;
+ 
+                pix := to_integer(abs(Dx_pix1_var) + abs(Dy_pix1_var));
+                pix1_sig <= pix;
+ 
                 -- Sets the real pixel register for writing
-                dataW(7 downto 0) <= std_logic_vector(abs(signed(unsigned(comp1(31 downto 24)) - unsigned(comp1(47 downto 40)) + 2 * (unsigned(comp2(31 downto 24)) - unsigned(comp2(47 downto 40))) + unsigned(comp3(31 downto 24)) - unsigned(comp3(47 downto 40)))) + abs(signed(unsigned(comp1(47 downto 40)) - unsigned(comp3(47 downto 40)) + 2 * (unsigned(comp1(39 downto 32)) - unsigned(comp3(39 downto 32))) + unsigned(comp1(31 downto 24)) - unsigned(comp3(31 downto 24)))));
-                pixel_temp(7 downto 0) <= std_logic_vector(abs(signed(unsigned(comp1(23 downto 16)) - unsigned(comp1(39 downto 32)) + 2 * (unsigned(comp2(23 downto 16)) - unsigned(comp2(39 downto 32))) + unsigned(comp3(23 downto 16)) - unsigned(comp3(39 downto 32)))) + abs(signed(unsigned(comp1(39 downto 32)) - unsigned(comp3(39 downto 32)) + 2 * (unsigned(comp1(31 downto 24)) - unsigned(comp3(31 downto 24))) + unsigned(comp1(23 downto 16)) - unsigned(comp3(23 downto 16)))));
-            end if;
+                -- If final value is greater than 255, clip to 255
+                if pix > 255 then
+                    dataW(31 downto 24) <= (others => '1');
+                else
+                    dataW(31 downto 24) <= std_logic_vector(to_unsigned(pix, 8));
+                end if;
+ 
+                p1 := to_signed(to_integer(unsigned(comp1(31 downto 24))), 9);
+                p2 := to_signed(to_integer(unsigned(comp1(15 downto 8))), 9);
+                p3 := to_signed(to_integer(unsigned(comp2(31 downto 24))), 9);
+                p4 := to_signed(to_integer(unsigned(comp2(15 downto 8))), 9);
+                p5 := to_signed(to_integer(unsigned(comp3(31 downto 24))), 9);
+                p6 := to_signed(to_integer(unsigned(comp3(15 downto 8))), 9);
+ 
+                Dx_pix2_var := resize(p1, 11) - resize(p2, 11) + resize(2*p3, 11) - resize(2*p4, 11) + resize(p5, 11) - resize(p6, 11);
+ 
+                p1 := to_signed(to_integer(unsigned(comp1(15 downto 8))), 9);
+                p2 := to_signed(to_integer(unsigned(comp3(15 downto 8))), 9);
+                p3 := to_signed(to_integer(unsigned(comp1(23 downto 16))), 9);
+                p4 := to_signed(to_integer(unsigned(comp3(23 downto 16))), 9);
+                p5 := to_signed(to_integer(unsigned(comp1(31 downto 24))), 9);
+                p6 := to_signed(to_integer(unsigned(comp3(31 downto 24))), 9);
+ 
+                Dy_pix2_var := resize(p1, 11) - resize(p2, 11) + resize(2*p3, 11) - resize(2*p4, 11) + resize(p5, 11) - resize(p6, 11);
+ 
+                Dx_pix2_sig <= Dx_pix2_var;
+                Dy_pix2_sig <= Dy_pix2_var;
+ 
+                pix := to_integer(abs(Dx_pix2_var) + abs(Dy_pix2_var));
+                pix2_sig <= pix;
+ 
+                -- Store last pixel for next address
+                -- If final value is greater than 255, clip to 255
+                if pix > 255 then
+                    next_pixel_store <= (others => '1');
+                else
+                    next_pixel_store <= std_logic_vector(to_signed(pix, 8));
+                end if;
+                when others =>
+                    null;
+            end case;
          end if;
     end process compute_process;
+
+
+
 
     -- Register process
     register_process : process(clk)
@@ -244,10 +473,12 @@ begin
                 reg <= next_reg;
                 write_reg <= next_write_reg;
                 read_reg <= next_read_reg;
-                index_of_load <= next_index_of_load;
+                -- index_of_load <= next_index_of_load;
                 addr <= next_reg;
                 y_position <= next_y_position;
                 x_position <= next_x_position;
+                pixel_store <= next_pixel_store;
+                comp_state <= next_comp_state;
 				--prev_x_position <= x_position;
             end if;
         end if;
