@@ -48,7 +48,7 @@ architecture rtl of acc is
 
     type state_type is (idle, read, computation, write, check_finish, initialise, load);
 
-    type computation_state is (first_computation, second_computation, no_computation);
+    type computation_state is (first_computation, second_computation, no_computation, EOL_computation);
 
     -- Buffer of three rows
     type row_buffer_array is array(0 to 87) of word_t;
@@ -80,7 +80,9 @@ architecture rtl of acc is
     
     signal output_flag : boolean := true;
     
-    signal EOL_flag : boolean := false;
+    signal EOL_flag, EOB_flag : boolean := false;
+    
+    signal test_flag : boolean := false; -- Testing if we are reading correctly
     
     signal pixel_out, next_pixel_out, pixel_temp : std_logic_vector(39 downto 0) := (others => '0');
     
@@ -141,8 +143,10 @@ begin
                     if x_position = 87 then 
                         index_of_buffer <= index_of_buffer + 1;
                         next_x_position <= 0;
+                        
                     else
                         next_x_position <= x_position + 1;
+                        
                     end if;
                     next_reg <= std_logic_vector(unsigned(reg) + 1);
                 end if;
@@ -177,21 +181,32 @@ begin
                 -- take the last read registers address
                 next_read_reg <= next_reg;
             when write =>
-            --do something
-            
-            -- writing flag
-            we <= '1';
-            en <= '1';
-            
-            if unsigned(write_reg) = 50600 then 
-                finish <= '1';
-            end if;
-            
-            --increment the address
-            next_write_reg <= std_logic_vector(unsigned(write_reg) + 1);
-            next_reg <= read_reg;
+                --do something
+                
+                -- writing flag
+                we <= '1';
+                en <= '1';
+       
+                
 
-            next_state <= load;
+
+                if unsigned(write_reg) = 50600 then 
+                    finish <= '1';
+                end if;
+                
+                --increment the address
+                next_write_reg <= std_logic_vector(unsigned(write_reg) + 1);
+                next_reg <= read_reg;
+
+                --  shift the computation registers to the right and keep just the last byte 
+                comp1 <= std_logic_vector(shift_right(unsigned(comp1), 16));
+                comp2 <= std_logic_vector(shift_right(unsigned(comp2), 16));
+                comp3 <= std_logic_vector(shift_right(unsigned(comp3), 16));
+
+                --next state
+                next_comp_state <= first_computation;        
+                next_state <= load;
+                
             when load =>
                 
                 --  shift the computation registers to the right and keep just the last byte 
@@ -215,24 +230,24 @@ begin
 					comp2(47 downto 16) <= row1_buffer(index_of_computation);
 					comp3(47 downto 16) <= row2_buffer(index_of_computation);
 				end if;
+                                -- first or second computation ?
+
+                next_comp_state <= second_computation;
+  
 
                 -- check if you finish this row
                 if index_of_computation = 87 then
-                    index_of_computation <= 0;
+                    index_of_computation <= 0;                 
+                elsif index_of_computation = 0 then
+                    next_comp_state <= EOL_computation;  
+                    index_of_computation <= index_of_computation + 1;                    
                 else
                     index_of_computation <= index_of_computation + 1;
                 end if;
 
-                -- first or second computation ?
-                if comp_state = first_computation then
-                    next_comp_state <= second_computation;
-                else
-                    next_comp_state <= first_computation;
-                end if;
 
-                
-                
-                --prepare for read
+
+                           --prepare for read
                 we <= '0';
                 en <= '1';
                 next_state <= read;
@@ -259,19 +274,18 @@ begin
                         index_of_buffer <= index_of_buffer + 1;
                     end if;
                     next_x_position <= 0;
+                    
                 else
                     next_x_position <= x_position + 1;
+                    
                 end if;
                 
                 --next state
                 next_read_reg <= std_logic_vector(unsigned(read_reg) + 1);
                 next_reg <= write_reg;
                 next_state <= write;
+                next_comp_state <= no_computation; -- Skip a computation
                 
-                --placeholder to finish the reading
-                if unsigned(read_reg) = 25344 then
-                    finish <= '1';
-                end if;
                 
             when others =>
                 next_state <= idle;
@@ -279,11 +293,6 @@ begin
         end case;
     end process task2;
     
-
-
-
-
-
 
 
     compute_process : process(comp_state)
@@ -294,9 +303,8 @@ begin
  
     begin
         next_pixel_store <= pixel_store;
- 
-        if EOL_flag = false then 
-        -- 
+        
+        if EOL_flag = false then -- Check if we are the end of the buffer to stop computation     
            case(comp_state) is 
             when first_computation =>
                 dataW(7 downto 0) <= pixel_store;
@@ -373,6 +381,10 @@ begin
                 else
                     dataW(23 downto 16) <= std_logic_vector(to_unsigned(pix, 8));
                 end if;
+
+                if test_flag = true then
+                    dataW(23 downto 0) <= comp2(23 downto 0);
+                end if;
                 -- Shifting Comp registers to place next two pixels to be computed at the same place 
             when second_computation =>       
                 p1 := to_signed(to_integer(unsigned(comp1(23 downto 16))), 9);
@@ -448,9 +460,20 @@ begin
                 else
                     next_pixel_store <= std_logic_vector(to_signed(pix, 8));
                 end if;
-                when others =>
-                    null;
+
+                if test_flag = true then
+                    dataW(31 downto 24) <= comp2(15 downto 8);  -- Output the read pixels
+                end if;
+                
+            when EOL_computation =>
+                dataW(31 downto 24) <= (others => '0');
+                next_pixel_store <= (others => '0');
+            when others =>
+               null;
             end case;
+        --  else
+        --      dataW(31 downto 24) <= (others => '0');
+        --      next_pixel_store <= (others => '0');
          end if;
     end process compute_process;
 
@@ -466,6 +489,7 @@ begin
                 state <= idle;
                 reg <= (others => '0');
                 y_position <= 0; 
+                
             else
                 -- Registers update
                 pixel_out <= next_pixel_out;
