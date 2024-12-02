@@ -74,8 +74,10 @@ architecture rtl of acc is
     -- Start from pixel 1
     signal x_position, next_x_position : integer := 0;
     
-    signal index_of_buffer: integer := 0;
+    signal index_of_buffer : integer := 0;
     -- init to 1 because the first address is loadded during the init phase
+    signal index_of_load : integer := 2;
+    
     signal index_of_computation : integer := 1;
     
     signal output_flag : boolean := true;
@@ -217,11 +219,11 @@ begin
 
                 -- Checks which computation reg needs which pixels
                 -- how do you increment the index ? the index represent wich position you are computing
-                if index_of_buffer = 2 then                                
+                if index_of_load = 2 then                                
 					comp1(47 downto 16) <= row1_buffer(index_of_computation);
 					comp2(47 downto 16) <= row2_buffer(index_of_computation);
 					comp3(47 downto 16) <= row3_buffer(index_of_computation);
-				elsif index_of_buffer = 0 then
+				elsif index_of_load = 0 then
 					comp1(47 downto 16) <= row2_buffer(index_of_computation);
 					comp2(47 downto 16) <= row3_buffer(index_of_computation);
 					comp3(47 downto 16) <= row1_buffer(index_of_computation);
@@ -237,7 +239,12 @@ begin
 
                 -- check if you finish this row
                 if index_of_computation = 87 then
-                    index_of_computation <= 0;                 
+                    index_of_computation <= 0;
+                    if index_of_load = 2 then
+                        index_of_load <= 0;
+                    else
+                        index_of_load <= index_of_load + 1;
+                    end if;
                 elsif index_of_computation = 0 then
                     next_comp_state <= EOL_computation;  
                     index_of_computation <= index_of_computation + 1;                    
