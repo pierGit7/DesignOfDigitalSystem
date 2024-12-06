@@ -48,6 +48,9 @@ architecture rtl of acc is
  
     type state_type is (idle, read, computation, write, done, initialise, load, bram_read);
  
+		-- type of computation state we are in. Before writing 
+		-- one address first and second computation shoul be compleated
+		-- no computation is the state while the acc is writing
     type computation_state is (first_computation, second_computation, no_computation, EOL_computation);
  
     -- Buffer of three rows
@@ -57,9 +60,11 @@ architecture rtl of acc is
     -- buffer three rows to acces three words each clock cycle
     signal row1_buffer, row2_buffer, row3_buffer : row_buffer_array := (others=>(others => '0'));
  
+		-- data read from the BRAM
     signal row1_read_data, row2_read_data, row3_read_data : word_t;
     signal row1_read_addr, row2_read_addr, row3_read_addr : integer range 0 to 87 := 0;
  
+		-- BRAM write register and enable signal
     signal row1_write_enable, row2_write_enable, row3_write_enable : std_logic := '0';
     signal row_write_index : integer range 0 to 87 := 0;
     signal row_write_data : word_t := (others => '0');
@@ -89,15 +94,16 @@ architecture rtl of acc is
     -- init to 1 because the first address is loadded during the init phase
     signal index_of_load, next_index_of_load : integer := 2;
  
+		-- index to understand wich addr we are reading from buffer
     signal next_index_of_computation, index_of_computation : integer := 0;
- 
-    signal test_flag : boolean := false; -- Testing if we are reading correctly
  
     signal pixel_store, next_pixel_store : std_logic_vector(7 downto 0) := (others => '0');
  
+		-- pixel always updated so they can always be available
     signal pix1_x, pix1_y, pix2_x, pix2_y : signed(10 downto 0) := (others => '0');
     signal pix1, pix2 : integer := 0;
  
+		-- temp regisyer for dataW
     signal prev_dataW, next_dataW : word_t := (others => '0');
  
     signal halt : boolean := false;
@@ -155,8 +161,9 @@ begin
                 elsif index_of_buffer = 2 then
                     row3_write_enable <= '1';
                 end if;
- 
+								-- check if the row ended
                 if x_position = 87 then 
+										-- change the buffer to fill
                     next_index_of_buffer <= index_of_buffer + 1;
                     next_x_position <= 0;
                 else
@@ -170,6 +177,7 @@ begin
                     if x_position = 0 then
                         next_state <= bram_read;
                     elsif x_position = 1 then
+												-- start computation
                         next_comp1(31 downto 0) <=  row1_read_data;
                         next_comp2(31 downto 0) <=  row2_read_data;
                         next_comp3(31 downto 0) <=  row3_read_data;
@@ -214,7 +222,7 @@ begin
                 --next state
                 next_comp_state <= first_computation;        
                 next_state <= load;
- 
+								-- check end
                 if unsigned(write_reg) = 50600 then 
                     next_state <= done;
                     finish <= '1';
@@ -222,16 +230,15 @@ begin
             when load =>
  
                 -- Checks which computation reg needs which pixels
-                -- how do you increment the index ? the index represent wich position you are computing
- 
-                -- first or second computation ?
+   
  
                 next_comp_state <= second_computation;
  
+								-- shift old pixel 
                 next_comp1 <= std_logic_vector(shift_right(unsigned(comp1), 16));
                 next_comp2 <= std_logic_vector(shift_right(unsigned(comp2), 16));
                 next_comp3 <= std_logic_vector(shift_right(unsigned(comp3), 16));
- 
+							 -- load new pixels
                 if index_of_load = 2 then                                
                     next_comp1(47 downto 16) <= row1_read_data;
 					next_comp2(47 downto 16) <= row2_read_data;
@@ -310,6 +317,8 @@ begin
  
  
             when done =>
+								-- check if start is still high
+								-- avoids weird behavior 
                 finish <= '1';
                 if start = '1' then
                     next_state <= done;
@@ -320,7 +329,7 @@ begin
                 next_state <= idle;
         end case;
     end process task2;
- 
+		-- always updated signals 
     pix1_x <= resize(to_signed(to_integer(unsigned(comp1(23 downto 16))), 9), 11) - resize(to_signed(to_integer(unsigned(comp1(7 downto 0))), 9), 11) + resize(2*to_signed(to_integer(unsigned(comp2(23 downto 16))), 9), 11) - resize(2*to_signed(to_integer(unsigned(comp2(7 downto 0))), 9), 11) + resize(to_signed(to_integer(unsigned(comp3(23 downto 16))), 9), 11) - resize(to_signed(to_integer(unsigned(comp3(7 downto 0))), 9), 11);
     pix1_y <= resize(to_signed(to_integer(unsigned(comp1(7 downto 0))), 9), 11) - resize(to_signed(to_integer(unsigned(comp3(7 downto 0))), 9), 11) + resize(2*to_signed(to_integer(unsigned(comp1(15 downto 8))), 9), 11) - resize(2*to_signed(to_integer(unsigned(comp3(15 downto 8))), 9), 11) + resize(to_signed(to_integer(unsigned(comp1(23 downto 16))), 9), 11) - resize(to_signed(to_integer(unsigned(comp3(23 downto 16))), 9), 11);
  
@@ -350,7 +359,7 @@ begin
                 else
                     next_dataW(23 downto 16) <= std_logic_vector(to_unsigned(pix2, 8));
                 end if;
-                -- Shifting Comp registers to place next two pixels to be computed at the same place 
+ 
             when second_computation =>       
  
                 -- Sets the real pixel register for writing
@@ -375,6 +384,7 @@ begin
             when no_computation =>
                 dataW <= prev_dataW;
             when EOL_computation =>
+								-- set pixels to 0 to fill the border of the image
                 next_dataW(31 downto 24) <= (others => '0');
                 next_pixel_store <= (others => '0');
             when others =>
