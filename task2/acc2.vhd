@@ -1,6 +1,6 @@
 -- -----------------------------------------------------------------------------
 --
---  Title      :  Edge-Detection design project - task 2. 😎
+--  Title      :  Edge-Detection design project - task 2. ðŸ˜Ž
 --             :
 --  Developers :  YOUR NAME HERE - s??????@student.dtu.dk
 --             :  YOUR NAME HERE - s??????@student.dtu.dk
@@ -103,35 +103,6 @@ architecture rtl of acc is
     signal halt : boolean := false;
  
 begin
-    -- row1_process : process(clk)
-    -- begin
-    --     if rising_edge(clk) then
-    --         if row1_write_enable = '1' then
-    --             row1_buffer(row_write_index) <= row_write_data;
-    --         end if;
-    --         row1_read_data <= row1_buffer(row_write_index);
-    --     end if;
-    -- end process;
- 
-    -- row2_process : process(clk)
-    -- begin
-    --     if rising_edge(clk) then
-    --         if row2_write_enable = '1' then
-    --             row2_buffer(row_write_index) <= row_write_data;
-    --         end if;
-    --         row2_read_data <= row2_buffer(row_write_index);
-    --     end if;
-    -- end process;
- 
-    -- row3_process : process(clk)
-    -- begin
-    --     if rising_edge(clk) then
-    --         if row3_write_enable = '1' then
-    --             row3_buffer(row_write_index) <= row_write_data;
-    --         end if;
-    --         row3_read_data <= row3_buffer(row_write_index);
-    --     end if;
-    -- end process;
  
     task2 : process(start, state, x_position, dataR, write_reg, reg, read_reg, comp1, comp2, comp3, index_of_buffer, index_of_computation, index_of_load, next_reg, comp_state, row1_read_data, row2_read_data, row3_read_data)
     begin
@@ -143,10 +114,6 @@ begin
         next_write_reg <= write_reg;
         next_reg <= reg;
         next_read_reg <= read_reg;
- 
-        --next_read1 <= read1;
-        --next_read2 <= read2;
-        --next_read3 <= read3;
  
         next_comp1 <= comp1;
         next_comp2 <= comp2;
@@ -163,7 +130,7 @@ begin
         row1_write_enable <= '0';
         row2_write_enable <= '0';
         row3_write_enable <= '0';
-        
+ 
         row_write_index <= x_position;
         row_write_data <= dataR;
  
@@ -189,63 +156,39 @@ begin
                     row3_write_enable <= '1';
                 end if;
  
+                if x_position = 87 then 
+                    next_index_of_buffer <= index_of_buffer + 1;
+                    next_x_position <= 0;
+                else
+                    next_x_position <= x_position + 1;
+                end if;
+                next_reg <= std_logic_vector(unsigned(reg) + 1);
  
                 -- see if you have read the first 3 addresses of the third row and start writing
-                --otherwise go to the next addresses and x_position
+                -- otherwise go to the next addresses and x_position
                 if index_of_buffer = 2 then
- 
                     if x_position = 0 then
                         next_state <= bram_read;
-                    end if;
- 
-                    if x_position = 1 then
+                    elsif x_position = 1 then
                         next_comp1(31 downto 0) <=  row1_read_data;
                         next_comp2(31 downto 0) <=  row2_read_data;
                         next_comp3(31 downto 0) <=  row3_read_data;
  
                         next_index_of_computation <= index_of_computation + 1;
+                        next_comp_state <= first_computation;    
  
-                        next_comp_state <= first_computation;             
-                    end if;
- 
-                    if x_position = 2 then
+                    elsif x_position = 2 then
                         we <= '0';
                         en <= '0';
  
                         -- load the next computation
-                        next_state <= bram_read;
- 
-                        --next_reg <= write_reg;
-                        next_x_position <= x_position + 1;
- 
-                        --next_comp_state <= first_computation;
-                    else
- 
-                        if x_position = 87 then 
-                            next_index_of_buffer <= index_of_buffer + 1;
-                            next_x_position <= 0;
- 
-                        else
-                            next_x_position <= x_position + 1;
-                        end if;
-                        next_reg <= std_logic_vector(unsigned(reg) + 1);
- 
-                    end if;
-                else
- 
-                    if x_position = 87 then 
-                        next_index_of_buffer <= index_of_buffer + 1;
-                        next_x_position <= 0;
- 
-                    else
-                        next_x_position <= x_position + 1;
-                    end if;
-                    next_reg <= std_logic_vector(unsigned(reg) + 1);
- 
+                        next_state <= bram_read;                        
+                        next_reg <= reg;                        
+                    end if; 
                 end if;
  
                 -- take the last read registers address
-                next_read_reg <= next_reg;
+                next_read_reg <= reg;
             when bram_read =>
                 row3_write_enable <= '0';
                 if to_integer(unsigned(read_reg)) < 179 then
@@ -255,8 +198,6 @@ begin
                 end if;
  
             when write =>
-                --do something
- 
                 -- writing flag
                 we <= '1';
                 en <= '1';
@@ -269,8 +210,6 @@ begin
                 next_comp1 <= std_logic_vector(shift_right(unsigned(comp1), 16));
                 next_comp2 <= std_logic_vector(shift_right(unsigned(comp2), 16));
                 next_comp3 <= std_logic_vector(shift_right(unsigned(comp3), 16));
- 
- 
  
                 --next state
                 next_comp_state <= first_computation;        
@@ -285,7 +224,7 @@ begin
                 -- Checks which computation reg needs which pixels
                 -- how do you increment the index ? the index represent wich position you are computing
  
-                                -- first or second computation ?
+                -- first or second computation ?
  
                 next_comp_state <= second_computation;
  
@@ -319,9 +258,6 @@ begin
                     end if;
                 elsif index_of_computation = 0 then
                     next_comp_state <= EOL_computation;  
-                    next_index_of_computation <= index_of_computation + 1;                    
-                else
-                    next_index_of_computation <= index_of_computation + 1;
                 end if;
  
  
@@ -470,12 +406,6 @@ begin
                 row2_read_addr <= 0;
                 row3_read_addr <= 0;
  
-                --row1_write_enable <= '0';
-                --row2_write_enable <= '0';
-                --row3_write_enable <= '0';
- 
-                --row_write_index <= 0;
- 
                 comp1 <= (others => '0');
                 comp2 <= (others => '0');
                 comp3 <= (others => '0');
@@ -491,10 +421,6 @@ begin
                 write_reg <= next_write_reg;
                 read_reg <= next_read_reg;
                 addr <= next_reg;
- 
-                --read1 <= next_read1;
-                --read2 <= next_read2;
-                --read3 <= next_read3;
  
                 row1_read_addr <= index_of_computation;
                 row2_read_addr <= index_of_computation;
